@@ -1,0 +1,21 @@
+# =========================================================================
+# gemini-core Agent Configuration & Metadata (DO NOT COMMIT FOR PUBLIC RELEASE)
+# =========================================================================
+.agent
+.agents/
+policy/
+GEMINI.md
+anti_patterns.md
+*.workspace
+build_error.log
+
+# =========================================================================
+# Local & OS Temporary Files
+# =========================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
