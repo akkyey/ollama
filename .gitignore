@@ -8,6 +8,8 @@ GEMINI.md
 anti_patterns.md
 *.workspace
 build_error.log
+.antigravityrules
+.antigravityrules.json
 
 # =========================================================================
 # Local & OS Temporary Files
