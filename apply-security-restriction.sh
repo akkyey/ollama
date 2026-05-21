@@ -20,7 +20,10 @@ docker run -d \
   -e RAG_WEB_SEARCH_ENGINE=searxng \
   -e RAG_WEB_SEARCH_API_BASE_URL=http://searxng:8080/search \
   -e DISABLE_SIGNUP=True \
-  -e BYPASS_WEB_SEARCH_WEB_LOADER=True \
+  -e ENABLE_API_KEYS=True \
+  -e BYPASS_WEB_SEARCH_WEB_LOADER=False \
+  -e ENABLE_SEARCH_QUERY_GENERATION=True \
+  -e ENABLE_RETRIEVAL_QUERY_GENERATION=True \
   -e USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
   -v /mnt/data/open-webui:/app/backend/data \
   -p "${TAILSCALE_IP}:3000:8080" \
@@ -66,6 +69,30 @@ elif replacement in content:
     print("ALREADY PATCHED")
 else:
     print("WARNING: Target string not found in main.py")
+EOF
+
+# クエリ生成JSONパースパッチの適用
+echo "⏳ クエリ生成JSONパースパッチを適用中..."
+cat << 'EOF' | docker exec -i open-webui python
+import sys
+file_path = "/app/backend/open_webui/utils/middleware.py"
+with open(file_path, "r") as f:
+    content = f.read()
+
+target = """            bracket_start = response.rfind('{')
+            bracket_end = response.rfind('}') + 1"""
+
+replacement = """            bracket_start = response.find('{')
+            bracket_end = response.rfind('}') + 1"""
+
+if target in content:
+    with open(file_path, "w") as f:
+        f.write(content.replace(target, replacement))
+    print("SUCCESS")
+elif replacement in content:
+    print("ALREADY PATCHED")
+else:
+    print("WARNING: Target string not found in middleware.py")
 EOF
 
 docker restart open-webui
