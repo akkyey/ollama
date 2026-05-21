@@ -25,4 +25,9 @@ Ollamaプロジェクトを `gemini-core` ガバナンス環境下で運用す�
   - [x] Task-08-08: テストケース05：VSCode SSH接続時の拡張機能（Continue等）からの直接疎通テスト <!-- status: DONE -->
   - [x] Task-08-09: クリーンアップ・初期化後の自動再起動の検証テスト <!-- status: DONE -->
 
-
+## 4. RAGコンテキスト改善タスク
+- [/] Task-09: Web Loaderのバイパス設定によるRAG品質の改善
+  - [x] Task-09-01: 起動スクリプト `start-ollama-tailscale-stack.sh` への `BYPASS_WEB_SEARCH_WEB_LOADER=True` の追加
+  - [x] Task-09-02: 制限適用スクリプト `apply-security-restriction.sh` への `BYPASS_WEB_SEARCH_WEB_LOADER=True` の追加
+  - [x] Task-09-03: スクリプトの実行（コンテナの再構築）
+  - [/] Task-09-04: 動作検証（静岡県沼津市の明日の天気の検索とLLM回答の確認）
