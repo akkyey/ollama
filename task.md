@@ -14,5 +14,15 @@ Ollamaプロジェクトを `gemini-core` ガバナンス環境下で運用す�
 - [x] Task-07: `brain_get_sarag_status` によるインデックス状況の検証 <!-- status: DONE -->
 
 ## 3. リモートサーバー導入タスク
-- [ ] Task-08: Ollama & Open WebUI リモートサーバー構築（Docker + SSHトンネリング） <!-- status: TODO -->
+- [x] Task-08: Ollama & Open WebUI リモートサーバー構築（Docker + SSHトンネリング） <!-- status: DONE -->
+  - [x] Task-08-01: 起動スクリプト `start-ollama-tailscale-stack.sh` の作成と配置 <!-- status: DONE -->
+  - [x] Task-08-02: セキュリティ制限適用スクリプト `apply-security-restriction.sh` の作成と配置 <!-- status: DONE -->
+  - [x] Task-08-03: クリーンアップ・初期化スクリプト `cleanup-ollama-stack.sh` の作成と配置 <!-- status: DONE -->
+  - [x] Task-08-04: テストケース01：コンテナの正常起動とログ検証 <!-- status: DONE -->
+  - [x] Task-08-05: テストケース02：ネットワークバインドの露出防止検証（ローカルホスト限定バインド） <!-- status: DONE -->
+  - [x] Task-08-06: テストケース03：クライアント接続と対話の結合テスト（ブラウザからのTailscale疎通） <!-- status: DONE -->
+  - [x] Task-08-07: テストケース04：Tailscale以外の物理NICポート遮断テスト <!-- status: DONE -->
+  - [x] Task-08-08: テストケース05：VSCode SSH接続時の拡張機能（Continue等）からの直接疎通テスト <!-- status: DONE -->
+  - [x] Task-08-09: クリーンアップ・初期化後の自動再起動の検証テスト <!-- status: DONE -->
+
 
