@@ -134,6 +134,40 @@ else:
     print("WARNING: Target string not found in middleware.py")
 EOF
 
+# 11. API メタデータ NoneType エラー回避パッチの適用
+echo "⏳ API メタデータ NoneType エラー回避パッチを適用中..."
+cat << 'EOF' | docker exec -i open-webui python
+import sys
+file_path = "/app/backend/open_webui/socket/main.py"
+with open(file_path, "r") as f:
+    content = f.read()
+
+target_1 = """    # Channel mode: route pipeline output to channel message updates
+    if request_info.get('chat_id', '').startswith('channel:'):"""
+replacement_1 = """    # Channel mode: route pipeline output to channel message updates
+    if (request_info.get('chat_id') or '').startswith('channel:'):"""
+
+target_2 = """        if update_db and message_id and not request_info.get('chat_id', '').startswith('local:'):"""
+replacement_2 = """        if update_db and message_id and not (request_info.get('chat_id') or '').startswith('local:'):"""
+
+patched = False
+if target_1 in content:
+    content = content.replace(target_1, replacement_1)
+    patched = True
+if target_2 in content:
+    content = content.replace(target_2, replacement_2)
+    patched = True
+
+if patched:
+    with open(file_path, "w") as f:
+        f.write(content)
+    print("SUCCESS")
+elif replacement_1 in content and replacement_2 in content:
+    print("ALREADY PATCHED")
+else:
+    print("WARNING: Target strings not found in socket/main.py")
+EOF
+
 docker restart open-webui
 
 echo "================================================================"
