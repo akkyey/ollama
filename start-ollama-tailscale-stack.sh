@@ -58,6 +58,7 @@ docker run -d \
   -e ENABLE_RAG_WEB_SEARCH=True \
   -e RAG_WEB_SEARCH_ENGINE=searxng \
   -e RAG_WEB_SEARCH_API_BASE_URL=http://searxng:8080/search \
+  -e USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
   -v /mnt/data/open-webui:/app/backend/data \
   -p "${TAILSCALE_IP}:3000:8080" \
   ghcr.io/open-webui/open-webui:main
