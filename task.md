@@ -40,5 +40,11 @@ Ollamaプロジェクトを `gemini-core` ガバナンス環境下で運用す�
   - [x] Task-10-04: クエリ生成JSONパースパッチの適用と Web Loader 有効化 (`BYPASS_WEB_SEARCH_WEB_LOADER=False`)
   - [x] Task-10-05: 動作検証（静岡県沼津市の明日の天気の検索とLLM回答の確認）
 
-
+## 6. LLM推論環境 ソフトウェア最適化タスク
+- [x] Task-11: フェーズ 1 - Qwen3.6-27B MTP GGUF モデルの取得 (IQ4_XS) <!-- status: DONE -->
+- [x] Task-12: フェーズ 2 - `llama.cpp` のネイティブビルド (-march=native -O3) <!-- status: DONE -->
+- [x] Task-13: フェーズ 3 - systemd ユニットとしての隔離とデプロイ <!-- status: DONE -->
+- [x] Task-14: フェーズ 4 - zRAM(16GB/22.7GB)の設定と負荷試験 <!-- status: DONE -->
+- [ ] Task-15: 量子化比較と監視導入（Prometheus+Grafana等）
+- [ ] Task-16: Ollamaのアイドル判定による自動排他スクリプトの導入
 
