@@ -20,7 +20,7 @@ Description=llama.cpp Server for Qwen3.6 27B MTP
 After=network.target
 
 [Service]
-ExecStart=/opt/llama.cpp/build/bin/llama-server -m ${MODEL_BLOB} --port 9090 -c 8192 -t 6
+ExecStart=/opt/llama.cpp/build/bin/llama-server -m ${MODEL_BLOB} --port 9090 -c 16384 -t 6 -ngl 99
 Restart=always
 User=root
 Group=root

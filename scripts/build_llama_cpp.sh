@@ -11,8 +11,12 @@ if [ ! -d ".git" ]; then
   git clone https://github.com/ggerganov/llama.cpp .
 fi
 
-echo "--- Building llama.cpp with native optimizations ---"
-cmake -B build -DGGML_NATIVE=ON
+echo "--- Installing Vulkan dependencies ---"
+sudo apt-get update
+sudo apt-get install -y libvulkan-dev vulkan-tools mesa-vulkan-drivers glslc glslang-tools spirv-headers
+
+echo "--- Building llama.cpp with Vulkan optimizations ---"
+cmake -B build -DGGML_VULKAN=ON -DGGML_NATIVE=ON
 cmake --build build --config Release -j 6
 
 echo "--- Setting up models directory ---"

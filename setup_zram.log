@@ -1,0 +1,57 @@
+================================================================
+🚀 フェーズ4: zRAM (16GB) の構築と永続化設定 (2026-05-24 09:47:53)
+================================================================
+1. zram-tools をインストール中...
+ヒット:1 https://cli.github.com/packages stable InRelease
+ヒット:2 https://deb.nodesource.com/node_20.x nodistro InRelease
+取得:3 https://pkgs.tailscale.com/stable/ubuntu resolute InRelease
+ヒット:4 http://archive.ubuntu.com/ubuntu resolute InRelease
+取得:5 http://security.ubuntu.com/ubuntu resolute-security InRelease [136 kB]
+取得:6 http://archive.ubuntu.com/ubuntu resolute-updates InRelease [136 kB]
+取得:7 http://security.ubuntu.com/ubuntu resolute-security/main amd64 Components [2,844 B]
+取得:8 http://security.ubuntu.com/ubuntu resolute-security/universe amd64 Components [39.7 kB]
+ヒット:9 http://archive.ubuntu.com/ubuntu resolute-backports InRelease
+取得:10 http://archive.ubuntu.com/ubuntu resolute-updates/main amd64 Components [9,956 B]
+取得:11 http://archive.ubuntu.com/ubuntu resolute-updates/universe amd64 Components [46.0 kB]
+376 kB を 2秒 で取得しました (181 kB/s)
+パッケージリストを読み込んでいます...
+パッケージリストを読み込んでいます...
+依存関係ツリーを作成しています...
+状態情報を読み取っています...
+Solving dependencies...
+以下のパッケージが新たにインストールされます:
+  zram-tools
+アップグレード: 0 個、新規インストール: 1 個、削除: 0 個、保留: 1 個。
+6,148 B のアーカイブを取得する必要があります。
+この操作後に追加で 28.7 kB のディスク容量が消費されます。
+取得:1 http://archive.ubuntu.com/ubuntu resolute/universe amd64 zram-tools all 0.3.7-1build1 [6,148 B]
+6,148 B を 0秒 で取得しました (49.0 kB/s)
+以前に未選択のパッケージ zram-tools を選択しています。
+(データベースを読み込んでいます ... (データベースを読み込んでいます ... 5%(データベースを読み込んでいます ... 10%(データベースを読み込んでいます ... 15%(データベースを読み込んでいます ... 20%(データベースを読み込んでいます ... 25%(データベースを読み込んでいます ... 30%(データベースを読み込んでいます ... 35%(データベースを読み込んでいます ... 40%(データベースを読み込んでいます ... 45%(データベースを読み込んでいます ... 50%(データベースを読み込んでいます ... 55%(データベースを読み込んでいます ... 60%(データベースを読み込んでいます ... 65%(データベースを読み込んでいます ... 70%(データベースを読み込んでいます ... 75%(データベースを読み込んでいます ... 80%(データベースを読み込んでいます ... 85%(データベースを読み込んでいます ... 90%(データベースを読み込んでいます ... 95%(データベースを読み込んでいます ... 100%(データベースを読み込んでいます ... 現在 112102 個のファイルとディレクトリがインストールされています。)
+.../zram-tools_0.3.7-1build1_all.deb を展開する準備をしています ...
+zram-tools (0.3.7-1build1) を展開しています...
+zram-tools (0.3.7-1build1) を設定しています ...
+Created symlink '/etc/systemd/system/multi-user.target.wants/zramswap.service' → '/usr/lib/systemd/system/zramswap.service'.
+man-db (2.13.1-1build1) のトリガを処理しています ...
+
+Running kernel seems to be up-to-date.
+
+The processor microcode seems to be up-to-date.
+
+No services need to be restarted.
+
+No containers need to be restarted.
+
+No user sessions are running outdated binaries.
+
+No VM guests are running outdated hypervisor (qemu) binaries on this host.
+2. /etc/default/zramswap を設定中 (16GB, zstd)...
+3. zRAM サービスを再起動して設定を適用中...
+4. zRAM の稼働状況:
+NAME       ALGORITHM DISKSIZE DATA COMPR TOTAL STREAMS MOUNTPOINT
+/dev/zram0 lz4          22.7G   4K   64B   20K         [SWAP]
+/dev/zram0 partition 22.7G   0B  100
+================================================================
+🎉 フェーズ4の zRAM構築 が完了しました (2026-05-24 09:48:00)
+これで llama-server を安全に起動する準備が整いました！
+================================================================
