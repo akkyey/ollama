@@ -4,7 +4,6 @@ import os
 import subprocess
 import time
 import requests
-import psutil
 
 MODELS = {
     "design": "/mnt/data/llama-models/Qwen3.6-27B-Q4_K_M.gguf",
@@ -13,35 +12,7 @@ MODELS = {
     "fast": "/mnt/data/llama-models/qwen2.5-14b-instruct-q4_k_m-00001-of-00003.gguf"
 }
 
-LOG_FILE = "/tmp/llama-server.log"
 PORT = 9090
-
-def get_llama_server_processes():
-    procs = []
-    for p in psutil.process_iter(['pid', 'name', 'cmdline']):
-        try:
-            if 'llama-server' in p.info['name'] or (p.info['cmdline'] and 'llama-server' in p.info['cmdline'][0]):
-                procs.append(p)
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-            pass
-    return procs
-
-def kill_processes(procs):
-    for p in procs:
-        try:
-            print(f"Terminating llama-server PID {p.pid}...")
-            p.terminate()
-        except Exception as e:
-            print(f"Failed to terminate PID {p.pid}: {e}")
-    
-    # Wait for termination
-    gone, alive = psutil.wait_procs(procs, timeout=5)
-    for p in alive:
-        try:
-            print(f"Force killing llama-server PID {p.pid}...")
-            p.kill()
-        except Exception as e:
-            print(f"Failed to kill PID {p.pid}: {e}")
 
 def wait_for_server():
     print(f"Waiting for llama-server to initialize on port {PORT}...")
@@ -75,15 +46,6 @@ def main():
 
     print(f"--- Switching to model for role: {role} ---")
     
-    # 1. Kill existing servers
-    procs = get_llama_server_processes()
-    if procs:
-        kill_processes(procs)
-    else:
-        print("No existing llama-server found.")
-        
-    # 2. Start new server
-    # Vulkan最適化: Qwenは20レイヤー、Gemma(31B)は重すぎるためCPU(0)とする
     ngl_value = "0"
     if "gemma" not in model_path.lower():
         ngl_value = "20"
@@ -99,26 +61,53 @@ def main():
         "--host", "0.0.0.0",
         "--port", str(PORT),
         "-ngl", ngl_value,
+        "--ubatch-size", "512",
         "-fa", "1",
         "-ctk", "q8_0",
         "-ctv", "q8_0"
     ]
     
-    # Qwenモデル（coding, design）の場合は専用のツール対応テンプレートを使用
     if "qwen" in model_path.lower():
         cmd.extend(["--chat-template-file", "scripts/qwen2.5_chat_template.jinja"])
-    # Gemmaなどの場合はデフォルトの内蔵テンプレートを使用（自動推論）
-    
+        
     import shlex
     cmd_str = shlex.join(cmd)
-    final_cmd = ["sg", "render", "-c", cmd_str]
     
-    print(f"Starting model: {os.path.basename(model_path)}")
-    with open(LOG_FILE, "w") as log_out:
-        # Popen to run in background (detach from python script)
-        subprocess.Popen(final_cmd, stdout=log_out, stderr=subprocess.STDOUT, start_new_session=True)
+    # We wrap the command in sg render for GPU access
+    exec_start = f"sg render -c {shlex.quote(cmd_str)}"
+    
+    service_content = f"""[Unit]
+Description=llama.cpp Server for {role} model
+After=network.target
+
+[Service]
+# -ngl 20: Stable APU offload
+# --ubatch-size 512: Prevent memory bandwidth thrashing on APU UMA
+ExecStart={exec_start}
+Restart=always
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target
+"""
+    
+    # Write to a temporary file, then sudo cp it to systemd
+    tmp_path = "/tmp/llama-server.service.tmp"
+    with open(tmp_path, "w") as f:
+        f.write(service_content)
         
-    # 3. Wait for it to become ready
+    try:
+        print("Updating systemd service file...")
+        subprocess.run(["sudo", "cp", tmp_path, "/etc/systemd/system/llama-server.service"], check=True)
+        print("Reloading systemd daemon...")
+        subprocess.run(["sudo", "systemctl", "daemon-reload"], check=True)
+        print("Restarting llama-server service...")
+        subprocess.run(["sudo", "systemctl", "restart", "llama-server"], check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to configure or restart systemd service: {e}")
+        sys.exit(1)
+        
     if wait_for_server():
         print(f"Successfully switched to {role} model.")
         with open("/tmp/llama-server-role.txt", "w") as f:
