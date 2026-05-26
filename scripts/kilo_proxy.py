@@ -119,21 +119,11 @@ def proxy(path):
                         msg['content'] = truncate_workspace(content)
         # ------------------------------------
 
-        is_stream = data.get('stream', False)
-        data['stream'] = False # Force non-streaming to llama-server
-        
-        headers = {k: v for k, v in request.headers.items() if k.lower() not in ['host', 'content-length']}
-        resp = requests.post(url, json=data, headers=headers)
-        
-        if resp.status_code == 200:
-            resp_data = resp.json()
-            
-            # FIX TOOL CALLS: Check if the model output raw JSON instead of tool_calls
+        def fix_tool_calls(resp_data):
             if 'choices' in resp_data and len(resp_data['choices']) > 0:
                 msg = resp_data['choices'][0].get('message', {})
                 content = msg.get('content', '') or ''
                 
-                # 1. <tool_name> { ... } </tool_name> 形式の検知
                 import re
                 xml_match = re.search(r'<([a-zA-Z0-9_]+)>\s*(\{.*?\})\s*</\1>', content, re.DOTALL)
                 
@@ -141,7 +131,6 @@ def proxy(path):
                     tool_name = xml_match.group(1)
                     tool_args_str = xml_match.group(2)
                     try:
-                        # JSONとしてパース可能か確認
                         json.loads(tool_args_str)
                         msg['content'] = content[:xml_match.start()].strip() or None
                         msg['tool_calls'] = [{
@@ -154,19 +143,16 @@ def proxy(path):
                         }]
                     except Exception as e:
                         print("Failed to parse XML tool call:", e)
-                # 2. 生のJSON形式 {"name": "...", "arguments": {...}} の検知 (文章が前にある場合も考慮)
                 elif '{"name"' in content:
                     json_start = content.find('{"name"')
                     json_str = content[json_start:].strip()
                     
-                    # 終端に余計な文字があれば除去してパースを試みる
                     parsed_tool = None
                     while len(json_str) > 10:
                         try:
                             parsed_tool = json.loads(json_str)
                             break
                         except Exception:
-                            # 最後の文字を削って再試行（末尾にゴミ文字があるケース対策）
                             json_str = json_str[:-1]
                             
                     if parsed_tool and 'name' in parsed_tool and 'arguments' in parsed_tool:
@@ -179,31 +165,72 @@ def proxy(path):
                                 'arguments': json.dumps(parsed_tool['arguments'])
                             }
                         }]
+            return resp_data
+
+        is_stream = data.get('stream', False)
+        data['stream'] = False # Force non-streaming to llama-server
+        
+        headers = {k: v for k, v in request.headers.items() if k.lower() not in ['host', 'content-length']}
+        
+        if is_stream:
+            import threading
+            import queue
+            from datetime import datetime
             
-            if is_stream:
-                # Convert the full response into a single SSE chunk for Kilo Code
-                def generate():
-                    chunk = {
-                        "id": resp_data.get("id", "chatcmpl-123"),
-                        "object": "chat.completion.chunk",
-                        "created": resp_data.get("created", 0),
-                        "model": resp_data.get("model", ""),
-                        "choices": [
-                            {
-                                "index": 0,
-                                "delta": msg,
-                                "finish_reason": resp_data['choices'][0].get('finish_reason', 'stop')
-                            }
-                        ]
-                    }
-                    yield f"data: {json.dumps(chunk)}\n\n"
-                    yield "data: [DONE]\n\n"
-                return Response(generate(), mimetype='text/event-stream')
-            else:
+            q = queue.Queue()
+            def fetch():
+                try:
+                    res = requests.post(url, json=data, headers=headers)
+                    q.put(('success', res))
+                except Exception as e:
+                    q.put(('error', str(e)))
+            
+            t = threading.Thread(target=fetch)
+            t.start()
+            
+            def generate():
+                while True:
+                    try:
+                        status, res = q.get(timeout=5.0)
+                        if status == 'success':
+                            if res.status_code == 200:
+                                resp_data = fix_tool_calls(res.json())
+                                msg = resp_data['choices'][0].get('message', {})
+                                chunk = {
+                                    "id": resp_data.get("id", "chatcmpl-123"),
+                                    "object": "chat.completion.chunk",
+                                    "created": resp_data.get("created", 0),
+                                    "model": resp_data.get("model", ""),
+                                    "choices": [
+                                        {
+                                            "index": 0,
+                                            "delta": msg,
+                                            "finish_reason": resp_data['choices'][0].get('finish_reason', 'stop')
+                                        }
+                                    ]
+                                }
+                                yield f"data: {json.dumps(chunk)}\n\n"
+                                yield "data: [DONE]\n\n"
+                            else:
+                                yield f"data: {json.dumps({'error': 'Backend error'})}\n\n"
+                        break
+                    except queue.Empty:
+                        heartbeat_chunk = {
+                            "id": "chatcmpl-heartbeat",
+                            "object": "chat.completion.chunk",
+                            "created": int(datetime.now().timestamp()),
+                            "model": data.get("model", "qwen"),
+                            "choices": [{"index": 0, "delta": {"content": ""}}]
+                        }
+                        yield f"data: {json.dumps(heartbeat_chunk)}\n\n"
+
+            return Response(generate(), mimetype='text/event-stream')
+        else:
+            resp = requests.post(url, json=data, headers=headers)
+            if resp.status_code == 200:
+                resp_data = fix_tool_calls(resp.json())
                 return Response(json.dumps(resp_data), mimetype='application/json')
-                
-        # If not 200, pass through
-        return Response(resp.content, status=resp.status_code, headers=dict(resp.headers))
+            return Response(resp.content, status=resp.status_code, headers=dict(resp.headers))
 
     # For non-chat requests (like /v1/models), just proxy directly
     req_kwargs = {
