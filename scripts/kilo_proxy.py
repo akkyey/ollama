@@ -163,6 +163,62 @@ def remove_unanchored_patterns(obj):
             remove_unanchored_patterns(item)
 
 
+# --- キャッシュ分析用グローバル状態とヘルパー関数 ---
+LAST_REQUEST_TEXT = ""
+LAST_REQUEST_LOCK = threading.Lock()
+
+def serialize_request_for_caching(data):
+    """リクエストデータから、LLMへの入力プロンプトに近い平坦なテキスト表現を作成する。
+    LCP（最長共通プレフィックス）算出のベースとして使用。"""
+    parts = []
+    # 1. ツール定義
+    if 'tools' in data:
+        parts.append(f"[TOOLS]\n{json.dumps(data['tools'], sort_keys=True)}")
+    
+    # 2. メッセージ履歴
+    parts.append("[MESSAGES]")
+    for msg in data.get('messages', []):
+        role = msg.get('role', '')
+        content = msg.get('content', '')
+        if isinstance(content, list):
+            text_parts = []
+            for part in content:
+                if part.get('type') == 'text':
+                    text_parts.append(part.get('text', ''))
+            content_str = "\n".join(text_parts)
+        else:
+            content_str = str(content)
+        parts.append(f"<{role}>\n{content_str}\n</{role}>")
+    
+    return "\n".join(parts)
+
+
+def get_lcp_and_breakpoint(s1, s2):
+    """2つの文字列 s1 と s2 の最長共通プレフィックスの長さと、不一致が発生した直後の部分（ブレークポイント）を取得する。"""
+    min_len = min(len(s1), len(s2))
+    lcp_len = 0
+    for i in range(min_len):
+        if s1[i] != s2[i]:
+            break
+        lcp_len += 1
+    
+    if lcp_len == 0:
+        return 0, "No common prefix."
+    
+    # 不一致箇所の周辺コンテキストを抽出
+    start = max(0, lcp_len - 15)
+    end = min(len(s2), lcp_len + 35)
+    breakpoint_context = s2[start:end]
+    marker_idx = lcp_len - start
+    marked_context = (
+        breakpoint_context[:marker_idx] 
+        + " 💥[BREAKPOINT]💥 " 
+        + breakpoint_context[marker_idx:]
+    )
+    marked_context = marked_context.replace('\n', '\\n')
+    return lcp_len, marked_context
+
+
 # --- Flaskアプリケーション ---
 app = Flask(__name__)
 
@@ -183,6 +239,22 @@ def proxy(path):
             )
 
         dump_payload(data)  # 観測: Kilo Codeの生ペイロードをダンプ
+
+        # --- [キャッシュ崩壊リアルタイム分析] ---
+        global LAST_REQUEST_TEXT
+        current_req_text = serialize_request_for_caching(data)
+        with LAST_REQUEST_LOCK:
+            if LAST_REQUEST_TEXT:
+                lcp_len, breakpoint_ctx = get_lcp_and_breakpoint(LAST_REQUEST_TEXT, current_req_text)
+                ratio = (lcp_len / len(current_req_text)) * 100 if len(current_req_text) > 0 else 0
+                logger.info(
+                    f"[CACHE_ANALYTICS] 総文字数: {len(current_req_text)} | "
+                    f"一致文字数: {lcp_len} ({ratio:.1f}%) | "
+                    f"分岐点: {breakpoint_ctx}"
+                )
+            else:
+                logger.info(f"[CACHE_ANALYTICS] 初回リクエスト (総文字数: {len(current_req_text)})")
+            LAST_REQUEST_TEXT = current_req_text
 
         # --- [Context Architecture最適化] ---
         # Kilo Codeが毎ターン送信してくる巨大なファイルツリー（3万トークン）を削減し、
