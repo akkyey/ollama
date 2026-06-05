@@ -1,0 +1,17 @@
+[Unit]
+Description=Ollama Exclusive Guard (llama-server controller)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/home/irom/dev/ollama/.venv/bin/python /home/irom/dev/ollama/scripts/ollama_idle_monitor.py
+Restart=always
+RestartSec=5
+User=root
+Group=root
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=ollama-guard
+
+[Install]
+WantedBy=multi-user.target

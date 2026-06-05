@@ -1,3 +1,3 @@
-FROM /mnt/data/llama-models/qwen2.5-coder-32b-instruct-q4_k_m.gguf
+FROM hf.co/unsloth/Qwen3.6-27B-GGUF:IQ4_XS
 PARAMETER num_gpu 20
 PARAMETER num_ctx 16384

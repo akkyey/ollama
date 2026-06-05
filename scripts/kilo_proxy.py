@@ -6,7 +6,8 @@ from flask import Flask, request, Response
 import requests
 
 # --- ペイロード観測用ログ設定 ---
-PAYLOAD_LOG_DIR = "/tmp/kilo_proxy_logs"
+# root実行時でも迷子にならないよう、Linuxの標準的な共有ログ領域、または環境変数から取得
+PAYLOAD_LOG_DIR = os.getenv("KILO_PROXY_LOG_DIR", "/var/log/kilo_proxy")
 os.makedirs(PAYLOAD_LOG_DIR, exist_ok=True)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 logger = logging.getLogger("kilo_proxy")
@@ -43,54 +44,13 @@ def proxy(path):
         # llama.cppのKVキャッシュ破壊とプレフィル地獄を防ぐ。
         messages = data.get('messages', [])
         
-        # --- [Agentic Switch (動的ルーティング)] ---
-        import re
-        import subprocess
-        
-        target_role = "coding" # デフォルトは最も強力なモデル
+        # Inject system directives
         for msg in messages:
-            if msg.get('role') == 'user':
-                content = msg.get('content')
-                text_content = ""
-                if isinstance(content, list):
-                    for part in content:
-                        if part.get('type') == 'text':
-                            text_content += part.get('text', '')
-                elif isinstance(content, str):
-                    text_content = content
+            if msg.get('role') == 'system':
+                msg['content'] += "\\n\\n[CRITICAL SYSTEM DIRECTIVE] Kilo Code has a strict 5-minute timeout. To prevent timeouts, YOU MUST NEVER output more than 40 lines of code at a time. If the file is longer, output the first part and end your message with 'I will continue in the next message. Please say continue.'\\n[CRITICAL SYSTEM DIRECTIVE 2] When you complete your tasks, YOU MUST ALWAYS use the 'todowrite' tool to update the remaining To-Dos to 'done' status. NEVER end your turn without checking off completed items."
                 
-                # <slug> を探す
-                slug_match = re.search(r'<slug>([^<]+)</slug>', text_content)
-                if slug_match:
-                    slug = slug_match.group(1).lower()
-                    if slug in ['code', 'debug']:
-                        target_role = "coding"
-                    elif slug in ['architect', 'orchestrator']:
-                        target_role = "design"
-                    elif slug in ['review']:
-                        target_role = "review"
-                    elif slug in ['ask']:
-                        target_role = "fast"
-                    break # 最新のslugを採用
-        
-        # 現在のロールを確認
-        current_role = None
-        try:
-            with open('/tmp/llama-server-role.txt', 'r') as f:
-                current_role = f.read().strip()
-        except FileNotFoundError:
-            pass
-            
-        if current_role != target_role:
-            logger.info(f"🔄 Agentic Switch: Switching role from {current_role} to {target_role}...")
-            try:
-                subprocess.run(["/home/irom/dev/ollama/.venv/bin/python", "scripts/switch_llama.py", target_role], check=True)
-                logger.info(f"✅ Agentic Switch: Successfully switched to {target_role}.")
-            except subprocess.CalledProcessError as e:
-                logger.error(f"❌ Agentic Switch failed: {e}")
-                # 失敗してもとりあえず既存のモデルに流す
-        # -------------------------------------------
-
+        # --- [Agentic Switch (Removed)] ---
+        # User requested to use the 27B model for all roles, so dynamic switching is disabled.
         
         def truncate_workspace(text):
             start_marker = "# Current Workspace Directory"
@@ -168,63 +128,79 @@ def proxy(path):
             return resp_data
 
         is_stream = data.get('stream', False)
+        
+        if 'tools' in data:
+            # --- [MCP Memory Tool 削除フィルター] ---
+            # ローカルLLMには不要かつ1万トークン以上消費する記憶ツール群を安全に除外
+            data['tools'] = [
+                t for t in data['tools']
+                if not t.get('function', {}).get('name', '').startswith('memory_')
+            ]
+            
+            def remove_unanchored_patterns(obj):
+                if isinstance(obj, dict):
+                    if 'pattern' in obj:
+                        p = obj['pattern']
+                        if isinstance(p, str) and not (p.startswith('^') and p.endswith('$')):
+                            del obj['pattern']
+                    for k, v in list(obj.items()):
+                        remove_unanchored_patterns(v)
+                elif isinstance(obj, list):
+                    for item in obj:
+                        remove_unanchored_patterns(item)
+            remove_unanchored_patterns(data['tools'])
+
         data['stream'] = False # Force non-streaming to llama-server
         
         headers = {k: v for k, v in request.headers.items() if k.lower() not in ['host', 'content-length']}
         
         if is_stream:
-            import threading
-            import queue
-            from datetime import datetime
-            
-            q = queue.Queue()
-            def fetch():
-                try:
-                    res = requests.post(url, json=data, headers=headers)
-                    q.put(('success', res))
-                except Exception as e:
-                    q.put(('error', str(e)))
-            
-            t = threading.Thread(target=fetch)
-            t.start()
-            
+            data['stream'] = True
             def generate():
+                # Force flush headers immediately to prevent Kilo Code connection timeout (5s)
+                dummy = {"id":"chatcmpl-dummy","object":"chat.completion.chunk","created":0,"model":"qwen","choices":[{"index":0,"delta":{"content":""},"finish_reason":None}]}
+                yield f'data: {json.dumps(dummy)}\n\n'
+                
+                resp = requests.post(url, json=data, headers=headers, stream=True)
+                import queue, threading, time
+                q = queue.Queue()
+                def reader():
+                    try:
+                        for chunk in resp.iter_lines():
+                            if chunk:
+                                q.put(chunk)
+                        q.put(None)
+                    except Exception:
+                        q.put(None)
+                threading.Thread(target=reader, daemon=True).start()
+                
+                start_time = time.time()
+                first_token_received = False
+                
                 while True:
                     try:
-                        status, res = q.get(timeout=5.0)
-                        if status == 'success':
-                            if res.status_code == 200:
-                                resp_data = fix_tool_calls(res.json())
-                                msg = resp_data['choices'][0].get('message', {})
-                                chunk = {
-                                    "id": resp_data.get("id", "chatcmpl-123"),
-                                    "object": "chat.completion.chunk",
-                                    "created": resp_data.get("created", 0),
-                                    "model": resp_data.get("model", ""),
-                                    "choices": [
-                                        {
-                                            "index": 0,
-                                            "delta": msg,
-                                            "finish_reason": resp_data['choices'][0].get('finish_reason', 'stop')
-                                        }
-                                    ]
-                                }
-                                yield f"data: {json.dumps(chunk)}\n\n"
-                                yield "data: [DONE]\n\n"
-                            else:
-                                yield f"data: {json.dumps({'error': 'Backend error'})}\n\n"
-                        break
+                        chunk = q.get(timeout=1.0)
+                        if chunk is None:
+                            break
+                        first_token_received = True
+                        yield chunk.decode('utf-8') + '\n\n'
                     except queue.Empty:
-                        heartbeat_chunk = {
-                            "id": "chatcmpl-heartbeat",
-                            "object": "chat.completion.chunk",
-                            "created": int(datetime.now().timestamp()),
-                            "model": data.get("model", "qwen"),
-                            "choices": [{"index": 0, "delta": {"content": ""}}]
-                        }
-                        yield f"data: {json.dumps(heartbeat_chunk)}\n\n"
-
+                        if not first_token_received and (time.time() - start_time) > 270:
+                            msg = '\\n\\n[System] コンテキストが巨大なため、読み込みに4分半以上かかっています。VS Codeの強制タイムアウトを防ぐため、一旦通信を正常終了させました。裏側でキャッシュ構築は継続していますので、10〜15分後にもう一度「再送」または「続行」を送信してください。'
+                            chunk_data = {
+                                "id": "chatcmpl-123",
+                                "object": "chat.completion.chunk",
+                                "created": 123,
+                                "model": "qwen",
+                                "choices": [{"index": 0, "delta": {"role": "assistant", "content": msg}, "finish_reason": "stop"}]
+                            }
+                            yield f'data: {json.dumps(chunk_data, ensure_ascii=False)}\\n\\n'
+                            yield 'data: [DONE]\\n\\n'
+                            break
+                        else:
+                            pass
             return Response(generate(), mimetype='text/event-stream')
+
         else:
             resp = requests.post(url, json=data, headers=headers)
             if resp.status_code == 200:
