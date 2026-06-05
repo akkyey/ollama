@@ -33,7 +33,7 @@ SYSTEM_DIRECTIVE = (
 
 # ストリーミング時のHeartbeat送信間隔（秒）
 # Kilo Codeの接続タイムアウト（約5分）を防ぐため、定期的に空チャンクを送信する
-HEARTBEAT_INTERVAL_SEC = 30
+HEARTBEAT_INTERVAL_SEC = 60
 
 # フェールセーフ切断までの最大待機時間（秒）
 # VS Code自体の根深いタイムアウト（約5分）を回避するための安全マージン
